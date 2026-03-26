@@ -11,6 +11,10 @@ class InputHandler:
         self.selected_cell: Optional[Tuple[int, int]] = None
         self.legal_moves: List[Tuple[int, int]] = []
 
+    def clear_selection(self) -> None:
+        self.selected_cell = None
+        self.legal_moves = []
+
     def handle_mouse(self, event: Any, state: GameState) -> None:
         mx, my = cast(tuple[int, int], event.pos)
 

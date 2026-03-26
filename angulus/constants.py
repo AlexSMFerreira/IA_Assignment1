@@ -30,6 +30,14 @@ PIECE_IMAGE_FILES = {
     ("black", "piece"): "bb.png",
     ("black", "king"): "bk.png",
 }
+
+# Used by UI evaluation display (king excluded from score view, like chess tools).
+POSITION_SCORE_VALUES = {
+    "pawn": 1,
+    "piece": 3,
+    "king": 0,
+}
+
 PIECE_VERTICAL_OFFSETS = {
     "pawn": 0,
     "piece": -12,

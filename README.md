@@ -30,6 +30,18 @@ Run the game:
 python main.py
 ```
 
+Run Human vs AI (AI as black, depth 3):
+
+```bash
+python main.py --mode human-vs-ai --ai-color black --ai-depth 3
+```
+
+Run AI vs AI:
+
+```bash
+python main.py --mode ai-vs-ai --ai-depth 3
+```
+
 Run a headless random-vs-random stress test (100 games):
 
 ```bash

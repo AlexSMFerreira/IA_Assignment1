@@ -12,6 +12,7 @@ from .constants import (
     MOVE_OVERLAY,
     PANEL_BG,
     PANEL_HEADER,
+    POSITION_SCORE_VALUES,
     PIECE_VERTICAL_OFFSETS,
     SELECTED_OVERLAY,
     SIDEBAR_WIDTH,
@@ -48,8 +49,50 @@ class Renderer:
         legal_moves: list[Tuple[int, int]],
     ) -> None:
         self.screen.fill((45, 52, 64))
+        self.draw_top_balance_bar(state)
         self.draw_board(state, selected_cell, legal_moves)
         self.draw_sidebar(state)
+
+    def draw_top_balance_bar(self, state: GameState) -> None:
+        white_ratio, black_ratio = self._score_percentages(state)
+        board_width = BOARD_COLS * SQUARE_SIZE
+        margin_x = 10
+        margin_y = 10
+        bar_x = margin_x
+        bar_y = margin_y
+        bar_width = board_width - 2 * margin_x
+        bar_height = max(8, BOARD_TOP_PADDING - 2 * margin_y)
+        white_width = int(bar_width * white_ratio)
+        black_width = bar_width - white_width
+
+        outer = self.pygame.Rect(bar_x, bar_y, bar_width, bar_height)
+        self.pygame.draw.rect(self.screen, (15, 18, 24), outer)
+
+        if white_width > 0:
+            self.pygame.draw.rect(
+                self.screen,
+                (240, 240, 240),
+                self.pygame.Rect(bar_x, bar_y, white_width, bar_height),
+            )
+        if black_width > 0:
+            self.pygame.draw.rect(
+                self.screen,
+                (20, 20, 20),
+                self.pygame.Rect(bar_x + white_width, bar_y, black_width, bar_height),
+            )
+
+        self.pygame.draw.rect(self.screen, TEXT_DIM, outer, 1)
+
+        white_text = self.tiny_font.render(f"W {white_ratio:.2f}", True, (20, 20, 20))
+        black_text = self.tiny_font.render(f"B {black_ratio:.2f}", True, (240, 240, 240))
+        self.screen.blit(white_text, (bar_x + 8, bar_y + (bar_height - white_text.get_height()) // 2))
+        self.screen.blit(
+            black_text,
+            (
+                bar_x + bar_width - black_text.get_width() - 8,
+                bar_y + (bar_height - black_text.get_height()) // 2,
+            ),
+        )
 
     def draw_board(
         self,
@@ -138,3 +181,51 @@ class Renderer:
             surface = self.tiny_font.render(line, True, color)
             self.screen.blit(surface, (panel_rect.x + 20, y))
             y += 22
+
+    def _position_scores(self, state: GameState) -> tuple[float, float]:
+        white_material = 0
+        black_material = 0
+        white_mobility = 0
+        black_mobility = 0
+
+        for row_index, row in enumerate(state.board):
+            for col_index, piece in enumerate(row):
+                if piece is None:
+                    continue
+
+                piece_value = POSITION_SCORE_VALUES[piece.kind]
+                mobility = len(state.get_legal_moves(row_index, col_index))
+                if piece.color == "white":
+                    white_material += piece_value
+                    white_mobility += mobility
+                else:
+                    black_material += piece_value
+                    black_mobility += mobility
+
+        white_score = white_material + 0.1 * white_mobility
+        black_score = black_material + 0.1 * black_mobility
+        return white_score, black_score
+
+    def _score_percentages(self, state: GameState) -> tuple[float, float]:
+        if state.mode == "game_over":
+            if state.winner == "white":
+                return 1.0, 0.0
+            if state.winner == "black":
+                return 0.0, 1.0
+            return 0.5, 0.5
+
+        white_score, black_score = self._position_scores(state)
+        safe_white = max(0.0, float(white_score))
+        safe_black = max(0.0, float(black_score))
+        total = safe_white + safe_black
+
+        if total <= 0.0:
+            return 0.5, 0.5
+
+        white_ratio = min(1.0, max(0.0, safe_white / total))
+        black_ratio = min(1.0, max(0.0, safe_black / total))
+
+        # Ensure exact partition of the bar after clamping.
+        white_ratio = min(1.0, max(0.0, white_ratio))
+        black_ratio = 1.0 - white_ratio
+        return white_ratio, black_ratio
