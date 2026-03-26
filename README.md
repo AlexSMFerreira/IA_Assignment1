@@ -48,6 +48,12 @@ Run a headless random-vs-random stress test (100 games):
 python main.py --random-games 100
 ```
 
+Run a headless AI-vs-AI stress test (100 games, depth 3):
+
+```bash
+python main.py --ai-games 100 --ai-depth 3
+```
+
 Optional flags:
 
 - `--seed <int>` to make runs reproducible.

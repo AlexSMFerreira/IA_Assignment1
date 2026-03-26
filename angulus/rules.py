@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .constants import BOARD_COLS, BOARD_ROWS, DIRECTIONS, INITIAL_LAYOUT
 from .models import Piece
@@ -14,16 +14,25 @@ class GameState:
         self.turn = "white"
         self.winner: Optional[str] = None
         self.status_message = "White to move"
+        self.repetition_limit = 3
+        self._move_pair_counts: Dict[
+            Tuple[str, Tuple[int, int], Tuple[int, int]],
+            int,
+        ] = {}
         self._validate_initial_board()
 
     def apply_move(self, src: Tuple[int, int], dst: Tuple[int, int]) -> None:
         sr, sc = src
         dr, dc = dst
         moving_piece = self.board[sr][sc]
-        target = self.board[dr][dc]
 
         if moving_piece is None:
             return
+
+        if dst not in self.get_legal_moves(sr, sc):
+            return
+
+        target = self.board[dr][dc]
 
         self.board[dr][dc] = moving_piece
         self.board[sr][sc] = None
@@ -34,7 +43,11 @@ class GameState:
             self.status_message = f"{self.winner.capitalize()} captured the king and wins"
             return
 
+        move_pair_key = (moving_piece.color, src, dst)
+        self._move_pair_counts[move_pair_key] = self._move_pair_counts.get(move_pair_key, 0) + 1
+
         self.turn = "black" if self.turn == "white" else "white"
+
         self.status_message = f"{self.turn.capitalize()} to move"
 
     def get_legal_moves(self, row: int, col: int) -> List[Tuple[int, int]]:
@@ -43,7 +56,8 @@ class GameState:
             return []
 
         if piece.kind == "pawn":
-            return self.get_pawn_moves(row, col, piece.color)
+            moves = self.get_pawn_moves(row, col, piece.color)
+            return [move for move in moves if not self._would_hit_repetition((row, col), move)]
 
         max_steps = 2 if piece.kind == "piece" else 3
         moves: List[Tuple[int, int]] = []
@@ -64,7 +78,7 @@ class GameState:
                     moves.append((nr, nc))
                 break
 
-        return moves
+        return [move for move in moves if not self._would_hit_repetition((row, col), move)]
 
     def get_pawn_moves(self, row: int, col: int, color: str) -> List[Tuple[int, int]]:
         moves: List[Tuple[int, int]] = []
@@ -147,3 +161,18 @@ class GameState:
                 if cell is not None and cell.color == color:
                     total += 1
         return total
+
+    def _would_hit_repetition(
+        self,
+        src: Tuple[int, int],
+        dst: Tuple[int, int],
+    ) -> bool:
+        sr, sc = src
+        moving_piece = self.board[sr][sc]
+
+        if moving_piece is None:
+            return True
+
+        move_pair_key = (moving_piece.color, src, dst)
+        next_count = self._move_pair_counts.get(move_pair_key, 0) + 1
+        return next_count >= self.repetition_limit

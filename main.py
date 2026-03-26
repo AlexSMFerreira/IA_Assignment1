@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from angulus.agents import run_random_self_play
+from angulus.agents import run_ai_self_play, run_random_self_play
 
 
 def parse_args() -> argparse.Namespace:
@@ -12,6 +12,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Run N headless random-vs-random games instead of opening the UI",
+    )
+    parser.add_argument(
+        "--ai-games",
+        type=int,
+        default=0,
+        help="Run N headless AI-vs-AI games instead of opening the UI",
     )
     parser.add_argument(
         "--seed",
@@ -57,6 +63,18 @@ def main() -> None:
         )
         print(
             f"Random self-play over {args.random_games} games: "
+            f"white={results['white']}, black={results['black']}, draw={results['draw']}"
+        )
+        return
+
+    if args.ai_games > 0:
+        results = run_ai_self_play(
+            games=args.ai_games,
+            ai_depth=max(1, args.ai_depth),
+            max_plies=args.max_plies,
+        )
+        print(
+            f"AI self-play over {args.ai_games} games (depth {max(1, args.ai_depth)}): "
             f"white={results['white']}, black={results['black']}, draw={results['draw']}"
         )
         return

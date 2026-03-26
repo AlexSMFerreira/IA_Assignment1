@@ -44,8 +44,8 @@ class AngulusGame:
         self.selected_ai_color = ai_color
         self.selected_ai_depth = ai_depth
         self.ai_by_color: dict[str, MinimaxAgent] = {}
+        self.ai_think_limit_ms = 1200
         self.ai_think_started_at_ms: int | None = None
-        self.ai_min_think_ms = 250
         self.renderer = Renderer(
             pygame_module=pygame,
             screen=self.screen,
@@ -79,10 +79,19 @@ class AngulusGame:
             self.ai_by_color[self.selected_ai_color] = MinimaxAgent(
                 color=self.selected_ai_color,
                 depth=self.selected_ai_depth,
+                max_think_ms=self.ai_think_limit_ms,
             )
         elif self.selected_mode == "ai-vs-ai":
-            self.ai_by_color["white"] = MinimaxAgent(color="white", depth=self.selected_ai_depth)
-            self.ai_by_color["black"] = MinimaxAgent(color="black", depth=self.selected_ai_depth)
+            self.ai_by_color["white"] = MinimaxAgent(
+                color="white",
+                depth=self.selected_ai_depth,
+                max_think_ms=self.ai_think_limit_ms,
+            )
+            self.ai_by_color["black"] = MinimaxAgent(
+                color="black",
+                depth=self.selected_ai_depth,
+                max_think_ms=self.ai_think_limit_ms,
+            )
 
     def _menu_rects(self) -> dict[str, Any]:
         center_x = WINDOW_WIDTH // 2
@@ -235,10 +244,6 @@ class AngulusGame:
 
     def _run_scheduled_ai_turn_if_ready(self) -> None:
         if self.ai_think_started_at_ms is None:
-            return
-
-        elapsed = pygame.time.get_ticks() - self.ai_think_started_at_ms
-        if elapsed < self.ai_min_think_ms:
             return
 
         self._play_ai_turn_if_needed()

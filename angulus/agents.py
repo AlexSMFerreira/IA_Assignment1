@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from copy import deepcopy
@@ -41,6 +42,7 @@ class MinimaxAgent:
     color: str
     depth: int = 2
     max_nodes: int = 25000
+    max_think_ms: int = 1200
     
     def pick_move(self, state: GameState) -> Optional[Move]:
         if state.mode != "play" or state.turn != self.color:
@@ -50,17 +52,34 @@ class MinimaxAgent:
             return None
 
         self._nodes_searched = 0
+        self._deadline_s: Optional[float]
+        if self.max_think_ms > 0:
+            self._deadline_s = time.perf_counter() + (self.max_think_ms / 1000.0)
+        else:
+            self._deadline_s = None
+
         best_move = legal_moves[0]
         best_score = float("-inf")
+        alpha = float("-inf")
+        beta = float("inf")
         for move in legal_moves:
+            if self._time_limit_reached():
+                break
             child = _apply_move_to_copy(state, move)
-            score = self._minimax(child, self.depth - 1)
+            score = self._minimax(child, self.depth - 1, alpha, beta)
             if score > best_score:
                 best_score = score
                 best_move = move
+            alpha = max(alpha, best_score)
         return best_move
 
-    def _minimax(self, state: GameState, depth: int) -> float:
+    def _time_limit_reached(self) -> bool:
+        return self._deadline_s is not None and time.perf_counter() >= self._deadline_s
+
+    def _minimax(self, state: GameState, depth: int, alpha: float, beta: float) -> float:
+        if self._time_limit_reached():
+            return _evaluate_state(state, self.color)
+
         self._nodes_searched += 1
         if self._nodes_searched >= self.max_nodes:
             return _evaluate_state(state, self.color)
@@ -77,15 +96,21 @@ class MinimaxAgent:
             max_eval = float("-inf")
             for move in legal_moves:
                 child = _apply_move_to_copy(state, move)
-                eval = self._minimax(child, depth - 1)
+                eval = self._minimax(child, depth - 1, alpha, beta)
                 max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
             return max_eval
         else:
             min_eval = float("inf")
             for move in legal_moves:
                 child = _apply_move_to_copy(state, move)
-                eval = self._minimax(child, depth - 1)
+                eval = self._minimax(child, depth - 1, alpha, beta)
                 min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
             return min_eval
 
 def _apply_move_to_copy(state: GameState, move: Move):
@@ -156,6 +181,41 @@ def run_random_self_play(
 
     for _ in range(games):
         result = run_random_game(rng=rng, max_plies=max_plies)
+        results[result] += 1
+
+    return results
+
+
+def run_ai_game(*, ai_depth: int = 2, max_plies: int = 500) -> str:
+    state = GameState()
+    white_agent = MinimaxAgent(color="white", depth=max(1, ai_depth))
+    black_agent = MinimaxAgent(color="black", depth=max(1, ai_depth))
+
+    for _ in range(max_plies):
+        current_agent = white_agent if state.turn == "white" else black_agent
+        selected_move = current_agent.pick_move(state)
+        if selected_move is None:
+            return "draw"
+
+        src, dst = selected_move
+        state.apply_move(src, dst)
+
+        if state.mode == "game_over":
+            return state.winner if state.winner is not None else "draw"
+
+    return "draw"
+
+
+def run_ai_self_play(
+    *,
+    games: int = 100,
+    ai_depth: int = 2,
+    max_plies: int = 500,
+) -> dict[str, int]:
+    results = {"white": 0, "black": 0, "draw": 0}
+
+    for _ in range(games):
+        result = run_ai_game(ai_depth=ai_depth, max_plies=max_plies)
         results[result] += 1
 
     return results
