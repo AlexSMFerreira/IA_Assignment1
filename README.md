@@ -30,6 +30,17 @@ Run the game:
 python main.py
 ```
 
+Run a headless random-vs-random stress test (100 games):
+
+```bash
+python main.py --random-games 100
+```
+
+Optional flags:
+
+- `--seed <int>` to make runs reproducible.
+- `--max-plies <int>` to cap game length before a draw is declared.
+
 ## Controls
 
 - Play mode:
