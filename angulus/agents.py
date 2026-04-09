@@ -123,7 +123,7 @@ def _evaluate_state(state: GameState, color: str) -> float:
     opponent = "black" if color == "white" else "white"
     if state.mode == "game_over":
         if state.winner == color:
-            return 1_000_000.0 # instead of inf to avoid potential overflow issues
+            return 1_000_000.0
         elif state.winner is None:
             return 0
         else:
@@ -150,6 +150,8 @@ def _evaluate_state(state: GameState, color: str) -> float:
     mobility_score = count_mobility(color) - count_mobility(opponent)
     return score + 0.1 * mobility_score
 
+# --- FUNÇÕES DE SELF-PLAY (NECESSÁRIAS PARA O MAIN.PY) ---
+
 def run_random_game(*, rng: random.Random, max_plies: int = 500) -> str:
     state = GameState()
     white_agent = RandomAgent(rng)
@@ -169,7 +171,6 @@ def run_random_game(*, rng: random.Random, max_plies: int = 500) -> str:
 
     return "draw"
 
-
 def run_random_self_play(
     *,
     games: int = 100,
@@ -178,16 +179,14 @@ def run_random_self_play(
 ) -> dict[str, int]:
     rng = random.Random(seed)
     results = {"white": 0, "black": 0, "draw": 0}
-
     for _ in range(games):
         result = run_random_game(rng=rng, max_plies=max_plies)
         results[result] += 1
-
     return results
-
 
 def run_ai_game(*, ai_depth: int = 2, max_plies: int = 500) -> str:
     state = GameState()
+    # Aqui o self-play usa Minimax puro para teste de performance
     white_agent = MinimaxAgent(color="white", depth=max(1, ai_depth))
     black_agent = MinimaxAgent(color="black", depth=max(1, ai_depth))
 
@@ -205,7 +204,6 @@ def run_ai_game(*, ai_depth: int = 2, max_plies: int = 500) -> str:
 
     return "draw"
 
-
 def run_ai_self_play(
     *,
     games: int = 100,
@@ -213,9 +211,9 @@ def run_ai_self_play(
     max_plies: int = 500,
 ) -> dict[str, int]:
     results = {"white": 0, "black": 0, "draw": 0}
-
     for _ in range(games):
         result = run_ai_game(ai_depth=ai_depth, max_plies=max_plies)
         results[result] += 1
-
     return results
+
+

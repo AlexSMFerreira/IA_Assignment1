@@ -1,91 +1,31 @@
 from __future__ import annotations
-
 import argparse
-
 from angulus.agents import run_ai_self_play, run_random_self_play
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Angulus game")
-    parser.add_argument(
-        "--random-games",
-        type=int,
-        default=0,
-        help="Run N headless random-vs-random games instead of opening the UI",
-    )
-    parser.add_argument(
-        "--ai-games",
-        type=int,
-        default=0,
-        help="Run N headless AI-vs-AI games instead of opening the UI",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Optional random seed for reproducible random games",
-    )
-    parser.add_argument(
-        "--max-plies",
-        type=int,
-        default=500,
-        help="Maximum half-moves per random game before declaring draw",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["human-vs-human", "human-vs-ai", "ai-vs-ai"],
-        default="human-vs-human",
-        help="UI game mode",
-    )
-    parser.add_argument(
-        "--ai-color",
-        choices=["white", "black"],
-        default="black",
-        help="AI color for human-vs-ai mode",
-    )
-    parser.add_argument(
-        "--ai-depth",
-        type=int,
-        default=2,
-        help="Search depth for Minimax AI",
-    )
+    parser.add_argument("--random-games", type=int, default=0)
+    parser.add_argument("--ai-games", type=int, default=0)
+    parser.add_argument("--mode", choices=["human-vs-human", "human-vs-ai", "ai-vs-ai"], default="human-vs-human")
+    parser.add_argument("--white-depth", type=int, default=1)
+    parser.add_argument("--black-depth", type=int, default=1)
     return parser.parse_args()
-
 
 def main() -> None:
     args = parse_args()
 
-    if args.random_games > 0:
-        results = run_random_self_play(
-            games=args.random_games,
-            seed=args.seed,
-            max_plies=args.max_plies,
-        )
-        print(
-            f"Random self-play over {args.random_games} games: "
-            f"white={results['white']}, black={results['black']}, draw={results['draw']}"
-        )
-        return
-
     if args.ai_games > 0:
-        results = run_ai_self_play(
-            games=args.ai_games,
-            ai_depth=max(1, args.ai_depth),
-            max_plies=args.max_plies,
-        )
-        print(
-            f"AI self-play over {args.ai_games} games (depth {max(1, args.ai_depth)}): "
-            f"white={results['white']}, black={results['black']}, draw={results['draw']}"
-        )
+        results = run_ai_self_play(games=args.ai_games, ai_depth=args.white_depth) 
+        print(f"AI self-play results: {results}")
         return
 
     from angulus.ui import AngulusGame
-
-    AngulusGame(
-        mode=args.mode,
-        ai_color=args.ai_color,
-        ai_depth=max(1, args.ai_depth),
-    ).run()
+    game = AngulusGame(mode=args.mode)
+    game.white_depth = args.white_depth
+    game.black_depth = args.black_depth
+    game.run()
 
 if __name__ == "__main__":
     main()
+
+
