@@ -30,33 +30,19 @@ Run the game:
 python main.py
 ```
 
-Run Human vs AI (AI as black, depth 3):
+Run ia games:
 
 ```bash
-python main.py --mode human-vs-ai --ai-color black --ai-depth 3
+python main.py --ai-vs-ai WHITE_AI BLACK_AI N
+# ou
+python main.py --ai-vs-ai WHITE_AI WHITE_DEPTH BLACK_AI BLACK_DEPTH N
 ```
 
-Run AI vs AI:
-
-```bash
-python main.py --mode ai-vs-ai --ai-depth 3
-```
-
-Run a headless random-vs-random stress test (100 games):
-
-```bash
-python main.py --random-games 100
-```
-
-Run a headless AI-vs-AI stress test (100 games, depth 3):
-
-```bash
-python main.py --ai-games 100 --ai-depth 3
-```
+Com {WHITE_AI}/{BLACK_AI} = "random"/"minimax"/"mcst".
 
 Optional flags:
 
-- `--seed <int>` to make runs reproducible.
+- `--seed <int>` to make random runs reproducible.
 - `--max-plies <int>` to cap game length before a draw is declared.
 
 ## Controls

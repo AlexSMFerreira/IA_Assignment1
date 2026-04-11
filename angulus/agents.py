@@ -8,6 +8,7 @@ from copy import deepcopy
 from .rules import GameState
 
 Move = Tuple[Tuple[int, int], Tuple[int, int]]
+GameOutcome = Tuple[str, Optional[int]]
 
 PIECE_VALUES = {
     "pawn": 1,
@@ -30,6 +31,7 @@ def get_all_legal_moves(state: GameState) -> list[Move]:
 @dataclass
 class RandomAgent:
     rng: random.Random
+    color: str
 
     def pick_move(self, state: GameState) -> Optional[Move]:
         legal_moves = get_all_legal_moves(state)
@@ -150,70 +152,78 @@ def _evaluate_state(state: GameState, color: str) -> float:
     mobility_score = count_mobility(color) - count_mobility(opponent)
     return score + 0.1 * mobility_score
 
-# --- FUNÇÕES DE SELF-PLAY (NECESSÁRIAS PARA O MAIN.PY) ---
+# --- FUNCOES DE SELF-PLAY (NECESSARIAS PARA O MAIN.PY) ---
 
-def run_random_game(*, rng: random.Random, max_plies: int = 500) -> str:
-    state = GameState()
-    white_agent = RandomAgent(rng)
-    black_agent = RandomAgent(rng)
+def _empty_report() -> dict[str, object]:
+    return {
+        "results": {"white": 0, "black": 0, "draw": 0},
+        "avg_winner_moves_per_game": 0,
+    }
 
-    for _ in range(max_plies):
-        current_agent = white_agent if state.turn == "white" else black_agent
-        selected_move = current_agent.pick_move(state)
-        if selected_move is None:
-            return "draw"
 
-        src, dst = selected_move
-        state.apply_move(src, dst)
+def _record_outcome(report: dict[str, object], outcome: GameOutcome) -> None:
+    winner, winner_moves = outcome
+    results = report["results"]
+    winner_moves_total = report["avg_winner_moves_per_game"]
 
-        if state.mode == "game_over":
-            return state.winner if state.winner is not None else "draw"
+    if not isinstance(results, dict) or not isinstance(winner_moves_total, int):
+        raise ValueError("Invalid simulation report structure")
 
-    return "draw"
-
-def run_random_self_play(
-    *,
-    games: int = 100,
-    seed: Optional[int] = None,
-    max_plies: int = 500,
-) -> dict[str, int]:
-    rng = random.Random(seed)
-    results = {"white": 0, "black": 0, "draw": 0}
-    for _ in range(games):
-        result = run_random_game(rng=rng, max_plies=max_plies)
-        results[result] += 1
-    return results
-
-def run_ai_game(*, ai_depth: int = 2, max_plies: int = 500) -> str:
-    state = GameState()
-    # Aqui o self-play usa Minimax puro para teste de performance
-    white_agent = MinimaxAgent(color="white", depth=max(1, ai_depth))
-    black_agent = MinimaxAgent(color="black", depth=max(1, ai_depth))
-
-    for _ in range(max_plies):
-        current_agent = white_agent if state.turn == "white" else black_agent
-        selected_move = current_agent.pick_move(state)
-        if selected_move is None:
-            return "draw"
-
-        src, dst = selected_move
-        state.apply_move(src, dst)
-
-        if state.mode == "game_over":
-            return state.winner if state.winner is not None else "draw"
-
-    return "draw"
+    results[winner] += 1
+    if winner in {"white", "black"} and winner_moves is not None:
+        report["avg_winner_moves_per_game"] = winner_moves_total + winner_moves
 
 def run_ai_self_play(
     *,
     games: int = 100,
-    ai_depth: int = 2,
+    white_ai: str = "random",
+    white_depth: int = 1,
+    black_ai: str = "random",
+    black_depth: int = 1,
+    seed: Optional[int] = None,
     max_plies: int = 500,
-) -> dict[str, int]:
-    results = {"white": 0, "black": 0, "draw": 0}
-    for _ in range(games):
-        result = run_ai_game(ai_depth=ai_depth, max_plies=max_plies)
-        results[result] += 1
-    return results
+) -> dict[str, object]:
+    report = _empty_report()
+    rng = random.Random(seed)
+
+    def _make_agent(agent_name: str, color: str, depth: int) -> RandomAgent | MinimaxAgent:
+        normalized = agent_name.strip().lower()
+        if normalized == "random":
+            return RandomAgent(color=color, rng=rng)
+        if normalized == "minimax":
+            return MinimaxAgent(color=color, depth=max(1, depth))
+        if normalized in {"mcst", "mcts"}:
+            # manage_todo_list: ligar MCTSAgent aqui quando estiver implementado.
+            raise NotImplementedError("MCST game mode is not implemented yet")
+        raise ValueError(f"Invalid AI type: {agent_name}")
+
+    for game_index in range(games):
+        state = GameState()
+        state.turn = "white" if game_index % 2 == 0 else "black"
+        move_counts = {"white": 0, "black": 0}
+        white_agent = _make_agent(white_ai, "white", white_depth)
+        black_agent = _make_agent(black_ai, "black", black_depth)
+
+        outcome: GameOutcome = ("draw", None)
+        for _ in range(max_plies):
+            current_agent = white_agent if state.turn == "white" else black_agent
+            selected_move = current_agent.pick_move(state)
+            if selected_move is None:
+                break
+
+            mover_color = state.turn
+            src, dst = selected_move
+            state.apply_move(src, dst)
+            move_counts[mover_color] += 1
+
+            if state.mode == "game_over":
+                if state.winner is not None:
+                    outcome = (state.winner, move_counts[state.winner])
+                break
+
+        _record_outcome(report, outcome)
+
+    report["avg_winner_moves_per_game"] = report["avg_winner_moves_per_game"] / games if games > 0 else None
+    return report
 
 
