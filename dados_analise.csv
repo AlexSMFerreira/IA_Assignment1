@@ -1,0 +1,7 @@
+ID,Confronto,White_Wins,Black_Wins,Draws,Avg_Moves
+T1,Random_vs_Random,52,42,6,46.59
+T2,Minimax1_vs_Minimax1,50,50,0,6.0
+T3,Minimax2_vs_Minimax2,1,18,11,26.433333333333334
+T4,Minimax1_vs_Random,0,0,0,0
+T5,Minimax2_vs_Random,0,0,0,0
+T6,Minimax2_vs_Minimax1,30,0,0,7.5
