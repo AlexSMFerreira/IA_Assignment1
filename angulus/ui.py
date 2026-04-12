@@ -4,12 +4,15 @@ import importlib
 import random
 from typing import Any, Union
 
-from .agents import MinimaxAgent, RandomAgent
+from .agents import MCSTAgent, MinimaxAgent, RandomAgent
 from .constants import (
+    BOARD_COLS,
     FPS,
     PIECES_DIR,
     PIECE_IMAGE_FILES,
     PIECE_SCALE,
+    SIDEBAR_WIDTH,
+    SQUARE_SIZE,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
@@ -19,7 +22,7 @@ from .rules import GameState
 
 pygame: Any = importlib.import_module("pygame")
 
-AgentType = Union[MinimaxAgent, RandomAgent]
+AgentType = Union[MCSTAgent, MinimaxAgent, RandomAgent]
 
 class AngulusGame:
     def __init__(
@@ -45,7 +48,11 @@ class AngulusGame:
         self.selected_mode = mode
         
         self.selected_ai_color = ai_color
-        self.white_depth = ai_depth
+        self.hva_agent_name = "mcst"
+        self.hva_depth = max(1, min(10, ai_depth))
+        self.white_agent_name = "mcst"
+        self.black_agent_name = "mcst"
+        self.white_depth = max(1, min(10, ai_depth))
         self.black_depth = ai_depth
         
         self.ai_by_color: dict[str, AgentType] = {}
@@ -75,20 +82,41 @@ class AngulusGame:
 
     def _initialize_agents_from_selection(self) -> None:
         self.ai_by_color = {}
+
+        def clamp_depth(depth: int) -> int:
+            return max(1, min(10, depth))
         
-        def create_agent(color: str, depth_level: int) -> AgentType:
-            if depth_level == 1:
-                return RandomAgent(rng=random.Random())
-            elif depth_level == 2:
-                return MinimaxAgent(color=color, depth=1, max_think_ms=self.ai_think_limit_ms)
-            else:
-                return MinimaxAgent(color=color, depth=2, max_think_ms=self.ai_think_limit_ms)
+        def create_agent(agent_name: str, color: str, depth_level: int) -> AgentType:
+            normalized = agent_name.strip().lower()
+            depth = clamp_depth(depth_level)
+            if normalized == "random":
+                return RandomAgent(color=color, rng=random.Random())
+            if normalized == "minimax":
+                return MinimaxAgent(color=color, depth=depth, max_think_ms=self.ai_think_limit_ms)
+            if normalized in {"mcst", "mcts"}:
+                return MCSTAgent(color=color, depth=depth, max_think_ms=self.ai_think_limit_ms, rng=random.Random())
+            return RandomAgent(color=color, rng=random.Random())
 
         if self.selected_mode == "human-vs-ai":
-            self.ai_by_color[self.selected_ai_color] = create_agent(self.selected_ai_color, self.white_depth)
+            self.ai_by_color[self.selected_ai_color] = create_agent(
+                self.hva_agent_name,
+                self.selected_ai_color,
+                self.hva_depth,
+            )
         elif self.selected_mode == "ai-vs-ai":
-            self.ai_by_color["white"] = create_agent("white", self.white_depth)
-            self.ai_by_color["black"] = create_agent("black", self.black_depth)
+            self.ai_by_color["white"] = create_agent(self.white_agent_name, "white", self.white_depth)
+            self.ai_by_color["black"] = create_agent(self.black_agent_name, "black", self.black_depth)
+
+    def _cycle_agent_name(self, current: str, delta: int) -> str:
+        options = ["random", "minimax", "mcst"]
+        if current not in options:
+            return options[0]
+        index = options.index(current)
+        return options[(index + delta) % len(options)]
+
+    def _agent_label(self, name: str) -> str:
+        labels = {"random": "Random", "minimax": "Minimax", "mcst": "MCST"}
+        return labels.get(name, name.title())
 
     def _menu_rects(self) -> dict[str, Any]:
         center_x = WINDOW_WIDTH // 2
@@ -106,13 +134,20 @@ class AngulusGame:
 
         rects["hva_white"] = pygame.Rect(left_x, top + 3 * (box_h + gap) + 20, 134, 40)
         rects["hva_black"] = pygame.Rect(left_x + 146, top + 3 * (box_h + gap) + 20, 134, 40)
-        rects["hva_minus"] = pygame.Rect(left_x, top + 4 * (box_h + gap) + 35, 60, 40)
-        rects["hva_plus"] = pygame.Rect(left_x + box_w - 60, top + 4 * (box_h + gap) + 35, 60, 40)
+        rects["hva_agent_prev"] = pygame.Rect(left_x, top + 4 * (box_h + gap) + 25, 60, 40)
+        rects["hva_agent_next"] = pygame.Rect(left_x + box_w - 60, top + 4 * (box_h + gap) + 25, 60, 40)
+        rects["hva_depth_minus"] = pygame.Rect(left_x, top + 5 * (box_h + gap) + 30, 60, 40)
+        rects["hva_depth_plus"] = pygame.Rect(left_x + box_w - 60, top + 5 * (box_h + gap) + 30, 60, 40)
 
-        rects["ava_w_minus"] = pygame.Rect(left_x, top + 3 * (box_h + gap) + 30, 50, 35)
-        rects["ava_w_plus"] = pygame.Rect(left_x + 80, top + 3 * (box_h + gap) + 30, 50, 35)
-        rects["ava_b_minus"] = pygame.Rect(left_x + 150, top + 3 * (box_h + gap) + 30, 50, 35)
-        rects["ava_b_plus"] = pygame.Rect(left_x + 230, top + 3 * (box_h + gap) + 30, 50, 35)
+        rects["ava_w_agent_prev"] = pygame.Rect(left_x, top + 3 * (box_h + gap) + 30, 50, 35)
+        rects["ava_w_agent_next"] = pygame.Rect(left_x + 230, top + 3 * (box_h + gap) + 30, 50, 35)
+        rects["ava_w_depth_minus"] = pygame.Rect(left_x, top + 4 * (box_h + gap) + 30, 50, 35)
+        rects["ava_w_depth_plus"] = pygame.Rect(left_x + 230, top + 4 * (box_h + gap) + 30, 50, 35)
+
+        rects["ava_b_agent_prev"] = pygame.Rect(left_x, top + 5 * (box_h + gap) + 30, 50, 35)
+        rects["ava_b_agent_next"] = pygame.Rect(left_x + 230, top + 5 * (box_h + gap) + 30, 50, 35)
+        rects["ava_b_depth_minus"] = pygame.Rect(left_x, top + 6 * (box_h + gap) + 30, 50, 35)
+        rects["ava_b_depth_plus"] = pygame.Rect(left_x + 230, top + 6 * (box_h + gap) + 30, 50, 35)
 
         rects["start_button"] = pygame.Rect(left_x, WINDOW_HEIGHT - 80, box_w, 54)
         return rects
@@ -125,6 +160,40 @@ class AngulusGame:
         font = self.tiny_font if small else self.small_font
         text_surface = font.render(text, True, (239, 243, 250))
         self.screen.blit(text_surface, (rect.x + (rect.width - text_surface.get_width()) // 2, rect.y + (rect.height - text_surface.get_height()) // 2))
+
+    def _in_game_rects(self) -> dict[str, Any]:
+        panel_x = BOARD_COLS * SQUARE_SIZE
+        button_w = SIDEBAR_WIDTH - 40
+        return {
+            "back_to_menu": pygame.Rect(panel_x + 20, WINDOW_HEIGHT - 168, button_w, 44),
+            "restart": pygame.Rect(panel_x + 20, WINDOW_HEIGHT - 114, button_w, 44),
+        }
+
+    def _draw_in_game_buttons(self) -> None:
+        rects = self._in_game_rects()
+        self._draw_button(rects["back_to_menu"], "Back to Menu")
+        if self.state.mode == "game_over":
+            self._draw_button(rects["restart"], "Restart", selected=True)
+
+    def _handle_in_game_click(self, event: Any) -> bool:
+        mx, my = event.pos
+        rects = self._in_game_rects()
+
+        if rects["back_to_menu"].collidepoint(mx, my):
+            self.menu_active = True
+            self.ai_think_started_at_ms = None
+            self.input_handler.clear_selection()
+            return True
+
+        if self.state.mode == "game_over" and rects["restart"].collidepoint(mx, my):
+            self.state = GameState()
+            self.input_handler.clear_selection()
+            self._initialize_agents_from_selection()
+            self.ai_think_started_at_ms = None
+            self.menu_active = False
+            return True
+
+        return False
 
     def _draw_start_menu(self) -> None:
         self.screen.fill((37, 43, 56))
@@ -142,24 +211,41 @@ class AngulusGame:
             self._draw_button(rects["hva_white"], "White", selected=self.selected_ai_color == "white")
             self._draw_button(rects["hva_black"], "Black", selected=self.selected_ai_color == "black")
             
-            self.screen.blit(self.tiny_font.render("Difficulty", True, (180, 191, 210)), (rects["hva_minus"].x, rects["hva_minus"].y - 18))
-            self._draw_button(rects["hva_minus"], "-")
-            self._draw_button(rects["hva_plus"], "+")
-            depth_text = f"{self.white_depth}: {diff_map[self.white_depth]}"
-            self.screen.blit(self.small_font.render(depth_text, True, (240, 244, 250)), (rects["hva_minus"].right + 15, rects["hva_minus"].y + 8))
+            self.screen.blit(self.tiny_font.render("AI Agent", True, (180, 191, 210)), (rects["hva_agent_prev"].x, rects["hva_agent_prev"].y - 18))
+            self._draw_button(rects["hva_agent_prev"], "<")
+            self._draw_button(rects["hva_agent_next"], ">")
+            self.screen.blit(self.small_font.render(self._agent_label(self.hva_agent_name), True, (240, 244, 250)), (rects["hva_agent_prev"].right + 15, rects["hva_agent_prev"].y + 8))
+
+            self.screen.blit(self.tiny_font.render("Depth (1-10)", True, (180, 191, 210)), (rects["hva_depth_minus"].x, rects["hva_depth_minus"].y - 18))
+            self._draw_button(rects["hva_depth_minus"], "-")
+            self._draw_button(rects["hva_depth_plus"], "+")
+            depth_text = str(self.hva_depth)
+            self.screen.blit(self.small_font.render(depth_text, True, (240, 244, 250)), (rects["hva_depth_minus"].right + 40, rects["hva_depth_minus"].y + 8))
 
         elif self.selected_mode == "ai-vs-ai":
-            # Controles para White AI
-            self.screen.blit(self.tiny_font.render("White AI Level", True, (180, 191, 210)), (rects["ava_w_minus"].x, rects["ava_w_minus"].y - 18))
-            self._draw_button(rects["ava_w_minus"], "-", small=True)
-            self._draw_button(rects["ava_w_plus"], "+", small=True)
-            self.screen.blit(self.small_font.render(diff_map[self.white_depth], True, (240, 244, 250)), (rects["ava_w_minus"].x + 10, rects["ava_w_minus"].bottom + 5))
+            self.screen.blit(self.tiny_font.render("White Agent", True, (180, 191, 210)), (rects["ava_w_agent_prev"].x, rects["ava_w_agent_prev"].y - 18))
+            self._draw_button(rects["ava_w_agent_prev"], "<", small=True)
+            self._draw_button(rects["ava_w_agent_next"], ">", small=True)
+            self.screen.blit(self.small_font.render(self._agent_label(self.white_agent_name), True, (240, 244, 250)), (rects["ava_w_agent_prev"].right + 15, rects["ava_w_agent_prev"].y + 5))
 
-            # Controles para Black AI
-            self.screen.blit(self.tiny_font.render("Black AI Level", True, (180, 191, 210)), (rects["ava_b_minus"].x, rects["ava_b_minus"].y - 18))
-            self._draw_button(rects["ava_b_minus"], "-", small=True)
-            self._draw_button(rects["ava_b_plus"], "+", small=True)
-            self.screen.blit(self.small_font.render(diff_map[self.black_depth], True, (240, 244, 250)), (rects["ava_b_minus"].x + 10, rects["ava_b_minus"].bottom + 5))
+            self.screen.blit(self.tiny_font.render("White Depth (1-10)", True, (180, 191, 210)), (rects["ava_w_depth_minus"].x, rects["ava_w_depth_minus"].y - 18))
+            self._draw_button(rects["ava_w_depth_minus"], "-", small=True)
+            self._draw_button(rects["ava_w_depth_plus"], "+", small=True)
+            self.screen.blit(self.small_font.render(str(self.white_depth), True, (240, 244, 250)), (rects["ava_w_depth_minus"].right + 45, rects["ava_w_depth_minus"].y + 5))
+
+            self.screen.blit(self.tiny_font.render("Black Agent", True, (180, 191, 210)), (rects["ava_b_agent_prev"].x, rects["ava_b_agent_prev"].y - 18))
+            self._draw_button(rects["ava_b_agent_prev"], "<", small=True)
+            self._draw_button(rects["ava_b_agent_next"], ">", small=True)
+            self.screen.blit(self.small_font.render(self._agent_label(self.black_agent_name), True, (240, 244, 250)), (rects["ava_b_agent_prev"].right + 15, rects["ava_b_agent_prev"].y + 5))
+
+            self.screen.blit(self.tiny_font.render("Black Depth (1-10)", True, (180, 191, 210)), (rects["ava_b_depth_minus"].x, rects["ava_b_depth_minus"].y - 18))
+            self._draw_button(rects["ava_b_depth_minus"], "-", small=True)
+            self._draw_button(rects["ava_b_depth_plus"], "+", small=True)
+            self.screen.blit(self.small_font.render(str(self.black_depth), True, (240, 244, 250)), (rects["ava_b_depth_minus"].right + 45, rects["ava_b_depth_minus"].y + 5))
+
+        info_text = "Increase the depth for greater difficulty."
+        info_surface = self.tiny_font.render(info_text, True, (180, 191, 210))
+        self.screen.blit(info_surface, ((WINDOW_WIDTH - info_surface.get_width()) // 2, WINDOW_HEIGHT - 110))
 
         self._draw_button(rects["start_button"], "Launch Battle", selected=True)
 
@@ -174,14 +260,20 @@ class AngulusGame:
         if self.selected_mode == "human-vs-ai":
             if rects["hva_white"].collidepoint(mx, my): self.selected_ai_color = "white"
             elif rects["hva_black"].collidepoint(mx, my): self.selected_ai_color = "black"
-            elif rects["hva_minus"].collidepoint(mx, my): self.white_depth = max(1, self.white_depth - 1)
-            elif rects["hva_plus"].collidepoint(mx, my): self.white_depth = min(3, self.white_depth + 1)
+            elif rects["hva_agent_prev"].collidepoint(mx, my): self.hva_agent_name = self._cycle_agent_name(self.hva_agent_name, -1)
+            elif rects["hva_agent_next"].collidepoint(mx, my): self.hva_agent_name = self._cycle_agent_name(self.hva_agent_name, 1)
+            elif rects["hva_depth_minus"].collidepoint(mx, my): self.hva_depth = max(1, self.hva_depth - 1)
+            elif rects["hva_depth_plus"].collidepoint(mx, my): self.hva_depth = min(10, self.hva_depth + 1)
         
         elif self.selected_mode == "ai-vs-ai":
-            if rects["ava_w_minus"].collidepoint(mx, my): self.white_depth = max(1, self.white_depth - 1)
-            elif rects["ava_w_plus"].collidepoint(mx, my): self.white_depth = min(3, self.white_depth + 1)
-            elif rects["ava_b_minus"].collidepoint(mx, my): self.black_depth = max(1, self.black_depth - 1)
-            elif rects["ava_b_plus"].collidepoint(mx, my): self.black_depth = min(3, self.black_depth + 1)
+            if rects["ava_w_agent_prev"].collidepoint(mx, my): self.white_agent_name = self._cycle_agent_name(self.white_agent_name, -1)
+            elif rects["ava_w_agent_next"].collidepoint(mx, my): self.white_agent_name = self._cycle_agent_name(self.white_agent_name, 1)
+            elif rects["ava_w_depth_minus"].collidepoint(mx, my): self.white_depth = max(1, self.white_depth - 1)
+            elif rects["ava_w_depth_plus"].collidepoint(mx, my): self.white_depth = min(10, self.white_depth + 1)
+            elif rects["ava_b_agent_prev"].collidepoint(mx, my): self.black_agent_name = self._cycle_agent_name(self.black_agent_name, -1)
+            elif rects["ava_b_agent_next"].collidepoint(mx, my): self.black_agent_name = self._cycle_agent_name(self.black_agent_name, 1)
+            elif rects["ava_b_depth_minus"].collidepoint(mx, my): self.black_depth = max(1, self.black_depth - 1)
+            elif rects["ava_b_depth_plus"].collidepoint(mx, my): self.black_depth = min(10, self.black_depth + 1)
 
         if rects["start_button"].collidepoint(mx, my):
             self.state = GameState()
@@ -212,12 +304,16 @@ class AngulusGame:
                 if event.type == pygame.QUIT: running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.menu_active: self._handle_menu_click(event)
-                    elif self._is_human_turn(): self.input_handler.handle_mouse(event, self.state)
+                    else:
+                        handled = self._handle_in_game_click(event)
+                        if not handled and self._is_human_turn():
+                            self.input_handler.handle_mouse(event, self.state)
             if self.menu_active: self._draw_start_menu()
             else:
                 if not self._is_human_turn() and self.ai_think_started_at_ms is None:
                     self.ai_think_started_at_ms = pygame.time.get_ticks()
                 self.renderer.draw(self.state, self.input_handler.selected_cell, self.input_handler.legal_moves)
+                self._draw_in_game_buttons()
                 self._run_scheduled_ai_turn_if_ready()
             pygame.display.flip()
         pygame.quit()

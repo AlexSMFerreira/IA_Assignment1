@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import time
+import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from copy import deepcopy
@@ -115,6 +116,177 @@ class MinimaxAgent:
                     break
             return min_eval
 
+
+@dataclass
+class _MCTSNode:
+    state: GameState
+    parent: Optional["_MCTSNode"] = None
+    move_from_parent: Optional[Move] = None
+    visits: int = 0
+    value_sum: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.untried_moves: list[Move] = get_all_legal_moves(self.state)
+        self.children: list[_MCTSNode] = []
+
+
+@dataclass
+class MCSTAgent:
+    color: str
+    depth: int = 1
+    max_think_ms: int = 1200
+    exploration_weight: float = 1.41
+    turn_sensitive_uct: bool = True
+    rollout_policy: str = "heuristic"
+    rng: Optional[random.Random] = None
+
+    def pick_move(self, state: GameState) -> Optional[Move]:
+        if state.mode != "play" or state.turn != self.color:
+            return None
+
+        legal_moves = get_all_legal_moves(state)
+        if not legal_moves:
+            return None
+
+        if len(legal_moves) == 1:
+            return legal_moves[0]
+
+        local_rng = self.rng if self.rng is not None else random.Random()
+        deadline_s: Optional[float]
+        if self.max_think_ms > 0:
+            deadline_s = time.perf_counter() + (self.max_think_ms / 1000.0)
+        else:
+            deadline_s = None
+
+        root = _MCTSNode(state=deepcopy(state))
+
+        while deadline_s is None or time.perf_counter() < deadline_s:
+            node = root
+
+            while not node.untried_moves and node.children:
+                node = self._select_child_uct(node)
+
+            if node.untried_moves:
+                move = local_rng.choice(node.untried_moves)
+                node.untried_moves.remove(move)
+                next_state = _apply_move_to_copy(node.state, move)
+                child = _MCTSNode(state=next_state, parent=node, move_from_parent=move)
+                node.children.append(child)
+                node = child
+
+            reward = self._rollout(node.state, local_rng, deadline_s)
+
+            while node is not None:
+                node.visits += 1
+                node.value_sum += reward
+                node = node.parent
+
+        if not root.children:
+            return legal_moves[0]
+
+        best_child = max(root.children, key=lambda child: child.visits)
+        return best_child.move_from_parent
+
+    def _select_child_uct(self, node: _MCTSNode) -> _MCTSNode:
+        log_parent_visits = math.log(max(2, node.visits + 1))
+        best_score = float("-inf")
+        best_child = node.children[0]
+        maximizing_turn = node.state.turn == self.color
+
+        for child in node.children:
+            if child.visits == 0:
+                return child
+            q_value = child.value_sum / child.visits
+            if self.turn_sensitive_uct:
+                exploit = q_value if maximizing_turn else -q_value
+            else:
+                exploit = q_value
+            explore = self.exploration_weight * math.sqrt(log_parent_visits / child.visits)
+            score = exploit + explore
+            if score > best_score:
+                best_score = score
+                best_child = child
+
+        return best_child
+
+    def _rollout(
+        self,
+        state: GameState,
+        rng: random.Random,
+        deadline_s: Optional[float],
+    ) -> float:
+        rollout_state = deepcopy(state)
+        max_rollout_plies = max(6, self.depth * 8)
+
+        for _ in range(max_rollout_plies):
+            if deadline_s is not None and time.perf_counter() >= deadline_s:
+                break
+
+            if rollout_state.mode == "game_over":
+                return self._terminal_reward(rollout_state)
+
+            legal_moves = get_all_legal_moves(rollout_state)
+            if not legal_moves:
+                break
+
+            src, dst = self._pick_rollout_move(rollout_state, legal_moves, rng)
+            rollout_state.apply_move(src, dst)
+
+        if rollout_state.mode == "game_over":
+            return self._terminal_reward(rollout_state)
+
+        estimate = _evaluate_state(rollout_state, self.color)
+        if estimate > 0:
+            return 0.75
+        if estimate < 0:
+            return 0.25
+        return 0.5
+
+    def _terminal_reward(self, state: GameState) -> float:
+        if state.winner == self.color:
+            return 1.0
+        if state.winner is None:
+            return 0.5
+        return 0.0
+
+    def _pick_rollout_move(
+        self,
+        state: GameState,
+        legal_moves: list[Move],
+        rng: random.Random,
+    ) -> Move:
+        policy = self.rollout_policy.strip().lower()
+        if policy == "random":
+            return rng.choice(legal_moves)
+        if policy in {"heuristic", "minimax1"}:
+            return self._pick_heuristic_rollout_move(state, legal_moves, rng)
+        return rng.choice(legal_moves)
+
+    def _pick_heuristic_rollout_move(
+        self,
+        state: GameState,
+        legal_moves: list[Move],
+        rng: random.Random,
+    ) -> Move:
+        maximizing = state.turn == self.color
+        best_score = float("-inf") if maximizing else float("inf")
+        best_moves: list[Move] = []
+
+        for move in legal_moves:
+            next_state = _apply_move_to_copy(state, move)
+            score = _evaluate_state(next_state, self.color)
+
+            is_better = score > best_score if maximizing else score < best_score
+            if is_better:
+                best_score = score
+                best_moves = [move]
+            elif score == best_score:
+                best_moves.append(move)
+
+        if not best_moves:
+            return rng.choice(legal_moves)
+        return rng.choice(best_moves)
+
 def _apply_move_to_copy(state: GameState, move: Move):
     next_state = deepcopy(state)
     src, dst = move
@@ -186,15 +358,14 @@ def run_ai_self_play(
     report = _empty_report()
     rng = random.Random(seed)
 
-    def _make_agent(agent_name: str, color: str, depth: int) -> RandomAgent | MinimaxAgent:
+    def _make_agent(agent_name: str, color: str, depth: int) -> RandomAgent | MinimaxAgent | MCSTAgent:
         normalized = agent_name.strip().lower()
         if normalized == "random":
             return RandomAgent(color=color, rng=rng)
         if normalized == "minimax":
             return MinimaxAgent(color=color, depth=max(1, depth))
         if normalized in {"mcst", "mcts"}:
-            # manage_todo_list: ligar MCTSAgent aqui quando estiver implementado.
-            raise NotImplementedError("MCST game mode is not implemented yet")
+            return MCSTAgent(color=color, depth=max(1, depth), rng=rng)
         raise ValueError(f"Invalid AI type: {agent_name}")
 
     for game_index in range(games):
