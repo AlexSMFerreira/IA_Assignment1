@@ -35,8 +35,8 @@ run_test() {
 run_test "T1" "Random_vs_Random" "random random 100"
 run_test "T2" "Minimax1_vs_Minimax1" "minimax 1 minimax 1 100"
 run_test "T3" "Minimax2_vs_Minimax2" "minimax 2 minimax 2 30"
-run_test "T4" "Minimax1_vs_Random" "minimax 1 random 100"
-run_test "T5" "Minimax2_vs_Random" "minimax 2 random 30"
+run_test "T4" "Minimax1_vs_Random" "minimax 1 random 0 100"
+run_test "T5" "Minimax2_vs_Random" "minimax 2 random 0 30"
 run_test "T6" "Minimax2_vs_Minimax1" "minimax 2 minimax 1 30"
 run_test "T7" "MCTS_vs_Minimax2" "mcst 1 minimax 2 30"
 
