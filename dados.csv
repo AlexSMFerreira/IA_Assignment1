@@ -1,0 +1,8 @@
+﻿ID,Confronto,Vit_Brancas,Vit_Pretas,Empates,Media_Jogadas,Total_Partidas,Taxa_Vit_Brancas,Taxa_Vit_Pretas,Taxa_Empate
+T1,Random vs Random,52,42,6,46.59,100,52.0,42.0,6.0
+T2,Minimax(D1) vs Random,100,0,0,5.18,100,100.0,0.0,0.0
+T3,MCTS vs Random,100,0,0,15.23,100,100.0,0.0,0.0
+T4,Minimax(D2) vs Minimax(D1),100,0,0,7.5,100,100.0,0.0,0.0
+T5,Minimax(D2) vs Random,100,0,0,12.34,100,100.0,0.0,0.0
+T6,Minimax(D1) vs MCTS,4,96,0,15.38,100,4.0,96.0,0.0
+T7,Minimax(D2) vs MCTS,8,0,2,51.0,10,80.0,0.0,20.0

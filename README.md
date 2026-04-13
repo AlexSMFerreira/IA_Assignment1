@@ -1,22 +1,22 @@
 # Angulus (Pygame)
 
-## Rules Implemented
+## Regras
 
-- Board size: 9 columns x 8 rows.
-- Goal: capture the opponent king.
-- Each turn: move one piece.
-- Pawn:
-	- Moves exactly 1 square in any direction.
-	- Captures only diagonally (1 square).
-- Piece:
-	- Moves and captures from 1 to 2 squares in any direction.
-- King:
-	- Moves and captures from 1 to 3 squares in any direction.
-- Sliding pieces (piece/king) cannot jump over other pieces.
+- **Tabuleiro:** 9 colunas × 8 linhas.
+- **Objetivo:** capturar o rei adversário.
+- **Cada turno:** mover uma peça.
 
-## Setup
+| Peça | Movimento | Captura |
+|------|-----------|---------|
+| **Peão** | Exatamente 1 casa em qualquer direção | Só na diagonal (1 casa) |
+| **Peça** | 1 a 2 casas em qualquer direção | 1 a 2 casas em qualquer direção |
+| **Rei** | 1 a 3 casas em qualquer direção | 1 a 3 casas em qualquer direção |
 
-Create and use a virtual environment:
+> Peças deslizantes (peça/rei) não podem saltar por cima de outras peças.
+
+---
+
+## Instalação
 
 ```bash
 python3 -m venv .venv
@@ -24,44 +24,58 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Run the game:
+## Execução
 
 ```bash
 python main.py
 ```
 
-Run ia games:
+### Modo IA vs IA
 
 ```bash
 python main.py --ai-vs-ai WHITE_AI BLACK_AI N
-# ou
+# ou com profundidade explícita
 python main.py --ai-vs-ai WHITE_AI WHITE_DEPTH BLACK_AI BLACK_DEPTH N
 ```
 
-Com {WHITE_AI}/{BLACK_AI} = "random"/"minimax"/"mcst".
+Valores para `WHITE_AI` / `BLACK_AI`: `random`, `minimax`, `mcst`.
 
-Optional flags:
+**Flags opcionais:**
 
-- `--seed <int>` to make random runs reproducible.
-- `--max-plies <int>` to cap game length before a draw is declared.
+- `--seed <int>` — torna execuções aleatórias reprodutíveis.
+- `--max-plies <int>` — limita o número de turnos antes de declarar empate.
 
-## Controls
+---
 
-- Play mode:
-	- Click one of your pieces to select it.
-	- Click a highlighted square to move/capture.
+## Controlos (modo jogador)
 
-## Set Initial Positions In Code
+1. Clica numa das tuas peças para a selecionar.
+2. Clica numa casa destacada para mover ou capturar.
 
-In `main.py`, edit the `INITIAL_LAYOUT` constant.
+---
 
-- 8 strings (rows), each with 9 characters (columns)
-- Symbols:
-	- `P` white pawn
-	- `A` white piece
-	- `K` white king
-	- `p` black pawn
-	- `a` black piece
-	- `k` black king
-	- `.` empty square
+## Análise de Dados e Benchmark
 
+Para visualizar o relatório técnico e os gráficos de performance:
+
+```bash
+pip install streamlit pandas plotly
+```
+
+---
+
+## Posições Iniciais
+
+Em `main.py`, edita a constante `INITIAL_LAYOUT`:
+
+- 8 strings (linhas), cada uma com 9 caracteres (colunas).
+
+| Símbolo | Peça |
+|---------|------|
+| `P` | Peão branco |
+| `A` | Peça branca |
+| `K` | Rei branco |
+| `p` | Peão preto |
+| `a` | Peça preta |
+| `k` | Rei preto |
+| `.` | Casa vazia |
