@@ -25,14 +25,14 @@ _DIRECTIONS_8 = [
     (1, -1),  (1, 0),  (1, 1),
 ]
 
-def get_all_legal_moves(state: GameState) -> list[Move]:
+def get_all_legal_moves(state: GameState, include_repetition: bool = True) -> list[Move]:
     moves: list[Move] = []
     for row_index, row in enumerate(state.board):
         for col_index, piece in enumerate(row):
             if piece is None or piece.color != state.turn:
                 continue
             source = (row_index, col_index)
-            for destination in state.get_legal_moves(row_index, col_index):
+            for destination in state.get_legal_moves(row_index, col_index, include_repetition=include_repetition):
                 moves.append((source, destination))
     return moves
 
@@ -51,9 +51,10 @@ class RandomAgent:
 @dataclass
 class MinimaxAgent:
     color: str
-    depth: int = 2
-    max_nodes: int = 25000
-    max_think_ms: int = 1200
+    depth: int = 3
+    max_nodes: int = 250000
+    max_think_ms: int = 5000
+    _search_termination_reason: Optional[str] = field(default=None, init=False, repr=False)
     
     def pick_move(self, state: GameState) -> Optional[Move]:
         if state.mode != "play" or state.turn != self.color:
@@ -63,51 +64,99 @@ class MinimaxAgent:
             return None
 
         self._nodes_searched = 0
+        self._search_termination_reason = None
         self._deadline_s: Optional[float]
         if self.max_think_ms > 0:
             self._deadline_s = time.perf_counter() + (self.max_think_ms / 1000.0)
         else:
             self._deadline_s = None
 
+        legal_moves = self._order_moves(state, legal_moves)
         best_move = legal_moves[0]
         best_score = float("-inf")
         alpha = float("-inf")
         beta = float("inf")
         for move in legal_moves:
             if self._time_limit_reached():
+                self._search_termination_reason = "time limit"
                 break
-            child = _apply_move_to_copy(state, move)
-            score = self._minimax(child, self.depth - 1, alpha, beta)
+            if not state.apply_move_with_history(*move):
+                continue
+            try:
+                score = self._minimax(state, self.depth - 1, alpha, beta)
+            finally:
+                state.undo_move()
             if score > best_score:
                 best_score = score
                 best_move = move
             alpha = max(alpha, best_score)
+        
+        if self._search_termination_reason is None:
+            self._search_termination_reason = "complete"
         return best_move
 
     def _time_limit_reached(self) -> bool:
         return self._deadline_s is not None and time.perf_counter() >= self._deadline_s
 
+    def _order_moves(self, state: GameState, moves: list[Move]) -> list[Move]:
+        """Sort moves by simple heuristic (descending) to improve alpha-beta pruning.
+        Prioritizes: king captures > captures > neutral moves."""
+        def move_score(move: Move) -> float:
+            src, dst = move
+            piece = state.board[src[0]][src[1]]
+            target = state.board[dst[0]][dst[1]]
+            
+            if piece is None:
+                return 0.0
+            
+            score = 0.0
+            if target is not None and target.color != piece.color:
+                if target.kind == "king":
+                    score += 10_000.0
+                else:
+                    score += PIECE_VALUES.get(target.kind, 0) * 10.0
+            return score
+        
+        return sorted(moves, key=lambda m: -move_score(m))
+
     def _minimax(self, state: GameState, depth: int, alpha: float, beta: float) -> float:
         if self._time_limit_reached():
-            return _evaluate_state(state, self.color)
+            if self._search_termination_reason is None:
+                self._search_termination_reason = "time limit"
+            return _evaluate_state_search(state, self.color)
 
         self._nodes_searched += 1
         if self._nodes_searched >= self.max_nodes:
-            return _evaluate_state(state, self.color)
+            if self._search_termination_reason is None:
+                self._search_termination_reason = "node limit"
+            return _evaluate_state_search(state, self.color)
 
-        if depth == 0 or state.mode == "game_over":
-            return _evaluate_state(state, self.color)
-        legal_moves = get_all_legal_moves(state)
-        if not legal_moves:
-            return _evaluate_state(state, self.color)
+        if depth == 0:
+            if self._search_termination_reason is None:
+                self._search_termination_reason = "depth limit"
+            return _evaluate_state_search(state, self.color)
         
+        if state.mode == "game_over":
+            if self._search_termination_reason is None:
+                self._search_termination_reason = "terminal"
+            return _evaluate_state_search(state, self.color)
+        
+        legal_moves = get_all_legal_moves(state, include_repetition=False)
+        if not legal_moves:
+            return _evaluate_state_search(state, self.color)
+        
+        legal_moves = self._order_moves(state, legal_moves)
         maximizing = (state.turn == self.color)
         
         if maximizing:
             max_eval = float("-inf")
             for move in legal_moves:
-                child = _apply_move_to_copy(state, move)
-                eval = self._minimax(child, depth - 1, alpha, beta)
+                if not state.apply_move_with_history(*move, validate=False):
+                    continue
+                try:
+                    eval = self._minimax(state, depth - 1, alpha, beta)
+                finally:
+                    state.undo_move()
                 max_eval = max(max_eval, eval)
                 alpha = max(alpha, eval)
                 if beta <= alpha:
@@ -116,8 +165,12 @@ class MinimaxAgent:
         else:
             min_eval = float("inf")
             for move in legal_moves:
-                child = _apply_move_to_copy(state, move)
-                eval = self._minimax(child, depth - 1, alpha, beta)
+                if not state.apply_move_with_history(*move, validate=False):
+                    continue
+                try:
+                    eval = self._minimax(state, depth - 1, alpha, beta)
+                finally:
+                    state.undo_move()
                 min_eval = min(min_eval, eval)
                 beta = min(beta, eval)
                 if beta <= alpha:
@@ -142,7 +195,7 @@ class _MCTSNode:
 class MCSTAgent:
     color: str
     depth: int = 1
-    max_think_ms: int = 1200
+    max_think_ms: int = 3000
     exploration_weight: float = 1.41
     turn_sensitive_uct: bool = True
     rollout_policy: str = "heuristic"
@@ -259,7 +312,7 @@ class MCSTAgent:
                 break
 
             src, dst = self._pick_rollout_move(rollout_state, legal_moves, rng)
-            rollout_state.apply_move(src, dst)
+            rollout_state.apply_move_with_history(src, dst, validate=False)
 
         if rollout_state.mode == "game_over":
             return self._terminal_reward(rollout_state)
@@ -343,7 +396,7 @@ class MCSTAgent:
                 opponent,
             )
             if own_king_was_threatened and own_king_is_safe_now:
-                score += 20.0
+                score += 1000.0
 
         # Discourage moving into immediate recapture unless compensated by gain.
         if _is_square_capturable_next_turn(next_state, dst[0], dst[1], opponent):
@@ -723,6 +776,39 @@ def _evaluate_state_normalized(state: GameState, color: str) -> float:
     if raw <= -300.0:
         return 0.0
     return 1.0 / (1.0 + math.exp(-raw / 6.0))
+
+
+def _evaluate_state_search(state: GameState, color: str) -> float:
+    opponent = _opp(color)
+
+    if state.mode == "game_over":
+        if state.winner == color:
+            return 1_000_000.0
+        if state.winner is None:
+            return 0.0
+        return -1_000_000.0
+
+    material_score = 0.0
+    for row in state.board:
+        for piece in row:
+            if piece is None:
+                continue
+            value = PIECE_VALUES[piece.kind]
+            material_score += value if piece.color == color else -value
+
+    own_king = _find_king(state, color)
+    opp_king = _find_king(state, opponent)
+
+    own_king_risk = 0.0
+    opp_king_risk = 0.0
+    if own_king is not None:
+        if _is_square_capturable_next_turn(state, own_king[0], own_king[1], opponent):
+            own_king_risk = 12.0
+    if opp_king is not None:
+        if _is_square_capturable_next_turn(state, opp_king[0], opp_king[1], color):
+            opp_king_risk = 12.0
+
+    return (material_score * 10.0) + (opp_king_risk - own_king_risk)
 
 # --- FUNCOES DE SELF-PLAY (NECESSARIAS PARA O MAIN.PY) ---
 
